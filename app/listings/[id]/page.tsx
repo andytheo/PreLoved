@@ -33,7 +33,15 @@ export default async function ListingDetailPage({ params }: Props) {
     where: { id },
     include: {
       user: {
-        select: { id: true, name: true, image: true, city: true, bio: true, createdAt: true },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+          city: true,
+          bio: true,
+          createdAt: true,
+        },
       },
       _count: { select: { favorites: true } },
     },
