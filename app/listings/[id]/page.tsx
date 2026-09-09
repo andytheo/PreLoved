@@ -9,6 +9,7 @@ import { MapPin, Clock, ArrowLeft, Tag, CheckCircle, LockKeyhole } from 'lucide-
 import DeleteListingButton from '@/components/listings/DeleteListingButton'
 import ImageGallery from '@/components/listings/ImageGallery'
 import ContactSellerSection from '@/components/listings/ContactSellerSection'
+import ReportListingButton from '@/components/safety/ReportListingButton'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -28,6 +29,8 @@ export default async function ListingDetailPage({ params }: Props) {
           image: true,
           city: true,
           bio: true,
+          emailVerifiedAt: true,
+          phoneVerifiedAt: true,
           createdAt: true,
         },
       },
@@ -41,6 +44,7 @@ export default async function ListingDetailPage({ params }: Props) {
   const category = getCategoryById(listing.category)
   const condition = getConditionById(listing.condition)
   const isOwner = session?.user?.id === listing.userId
+  const verifiedMember = !!listing.user.emailVerifiedAt && !!listing.user.phoneVerifiedAt
 
   const currentRequest = session?.user?.id && !isOwner
     ? await prisma.request.findUnique({
@@ -178,8 +182,10 @@ export default async function ListingDetailPage({ params }: Props) {
             </Link>
 
             <div className="flex items-center gap-1 text-xs text-gray-500 mb-4">
-              <CheckCircle className="w-3.5 h-3.5 text-teal-500" />
-              Verified member since {new Date(listing.user.createdAt).getFullYear()}
+              <CheckCircle className={`w-3.5 h-3.5 ${verifiedMember ? 'text-teal-500' : 'text-gray-300'}`} />
+              {verifiedMember ? 'Email & phone verified' : 'Verification incomplete'}
+              <span>·</span>
+              <span>Member since {new Date(listing.user.createdAt).getFullYear()}</span>
             </div>
 
             <ContactSellerSection listing={listing} session={session} currentRequest={currentRequest} />
@@ -193,6 +199,11 @@ export default async function ListingDetailPage({ params }: Props) {
               <li>• Never send money for a supposedly free item</li>
               <li>• Report suspicious listings or users</li>
             </ul>
+            {!isOwner && (
+              <div className="mt-3 pt-3 border-t border-amber-200/70">
+                <ReportListingButton listingId={listing.id} />
+              </div>
+            )}
           </div>
         </div>
       </div>
