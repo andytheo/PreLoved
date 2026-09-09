@@ -4,19 +4,32 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { CATEGORIES, CONDITIONS } from '@/lib/categories'
+import { boundingBox, clampRadius, haversineKm, isValidCoordinate, publicCoordinate } from '@/lib/geo'
 
 const categoryIds = CATEGORIES.map((category) => category.id)
 const conditionIds = CONDITIONS.map((condition) => condition.id)
 
-const createListingSchema = z.object({
-  title: z.string().min(3).max(100),
-  description: z.string().min(10).max(2000),
-  category: z.string().refine((value) => categoryIds.includes(value), 'Invalid category'),
-  condition: z.string().refine((value) => conditionIds.includes(value), 'Invalid condition'),
-  city: z.string().min(2).max(100),
-  address: z.string().max(200).optional(),
-  images: z.array(z.string()).max(6).optional(),
-})
+const createListingSchema = z
+  .object({
+    title: z.string().min(3).max(100),
+    description: z.string().min(10).max(2000),
+    category: z.string().refine((value) => categoryIds.includes(value), 'Invalid category'),
+    condition: z.string().refine((value) => conditionIds.includes(value), 'Invalid condition'),
+    city: z.string().min(2).max(100),
+    address: z.string().max(200).optional(),
+    images: z.array(z.string().url()).max(6).optional(),
+    lat: z.number().min(-90).max(90).optional(),
+    lng: z.number().min(-180).max(180).optional(),
+  })
+  .superRefine((value, context) => {
+    if ((value.lat == null) !== (value.lng == null)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['lat'],
+        message: 'Latitude and longitude must be provided together',
+      })
+    }
+  })
 
 export async function GET(req: Request) {
   try {
@@ -30,6 +43,12 @@ export async function GET(req: Request) {
     const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 60) : 20
     const cursor = searchParams.get('cursor')
 
+    const lat = Number(searchParams.get('lat'))
+    const lng = Number(searchParams.get('lng'))
+    const radiusKm = clampRadius(Number(searchParams.get('radius') ?? '25'))
+    const hasGeo = isValidCoordinate(lat, lng)
+    const box = hasGeo ? boundingBox(lat, lng, radiusKm) : null
+
     const listings = await prisma.listing.findMany({
       where: {
         isAvailable: true,
@@ -39,15 +58,19 @@ export async function GET(req: Request) {
           AND: [
             {
               OR: [
-                { title: { contains: q } },
-                { description: { contains: q } },
+                { title: { contains: q, mode: 'insensitive' } },
+                { description: { contains: q, mode: 'insensitive' } },
               ],
             },
           ],
         }),
         ...(category && categoryIds.includes(category) && { category }),
         ...(condition && conditionIds.includes(condition) && { condition }),
-        ...(city && { city: { contains: city } }),
+        ...(city && { city: { contains: city, mode: 'insensitive' } }),
+        ...(box && {
+          lat: { gte: box.minLat, lte: box.maxLat },
+          lng: { gte: box.minLng, lte: box.maxLng },
+        }),
       },
       select: {
         id: true,
@@ -57,6 +80,8 @@ export async function GET(req: Request) {
         condition: true,
         images: true,
         city: true,
+        lat: true,
+        lng: true,
         status: true,
         isAvailable: true,
         expiresAt: true,
@@ -67,16 +92,30 @@ export async function GET(req: Request) {
         _count: { select: { favorites: true, requests: true } },
       },
       orderBy: { createdAt: sort === 'oldest' ? 'asc' : 'desc' },
-      take: limit + 1,
-      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+      take: hasGeo ? 200 : limit + 1,
+      ...(!hasGeo && cursor && { cursor: { id: cursor }, skip: 1 }),
     })
 
-    const hasMore = listings.length > limit
-    const page = hasMore ? listings.slice(0, limit) : listings
+    const filtered = hasGeo
+      ? listings.filter(
+          (listing) =>
+            listing.lat != null &&
+            listing.lng != null &&
+            haversineKm(lat, lng, listing.lat, listing.lng) <= radiusKm
+        )
+      : listings
+
+    const hasMore = !hasGeo && filtered.length > limit
+    const page = (hasMore ? filtered.slice(0, limit) : filtered.slice(0, limit)).map((listing) => ({
+      ...listing,
+      lat: publicCoordinate(listing.lat),
+      lng: publicCoordinate(listing.lng),
+    }))
     const nextCursor = hasMore ? page[page.length - 1]?.id ?? null : null
 
-    return NextResponse.json({ items: page, nextCursor })
-  } catch {
+    return NextResponse.json({ items: page, nextCursor, radiusKm: hasGeo ? radiusKm : null })
+  } catch (error) {
+    console.error('Failed to fetch listings', error)
     return NextResponse.json({ error: 'Failed to fetch listings' }, { status: 500 })
   }
 }
@@ -88,9 +127,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await req.json()
-    const parsed = createListingSchema.safeParse(body)
-
+    const parsed = createListingSchema.safeParse(await req.json())
     if (!parsed.success) {
       return NextResponse.json(
         { error: 'Invalid input', details: parsed.error.flatten().fieldErrors },
@@ -98,7 +135,7 @@ export async function POST(req: Request) {
       )
     }
 
-    const { title, description, category, condition, city, address, images = [] } = parsed.data
+    const { title, description, category, condition, city, address, images = [], lat, lng } = parsed.data
 
     const listing = await prisma.listing.create({
       data: {
@@ -109,6 +146,8 @@ export async function POST(req: Request) {
         city: city.trim(),
         address: address?.trim() || null,
         images: JSON.stringify(images),
+        lat: lat ?? null,
+        lng: lng ?? null,
         userId: session.user.id,
         status: 'AVAILABLE',
         isAvailable: true,
@@ -132,7 +171,8 @@ export async function POST(req: Request) {
     })
 
     return NextResponse.json(listing, { status: 201 })
-  } catch {
+  } catch (error) {
+    console.error('Failed to create listing', error)
     return NextResponse.json({ error: 'Failed to create listing' }, { status: 500 })
   }
 }
