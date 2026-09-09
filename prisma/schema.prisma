@@ -25,6 +25,8 @@ model User {
 
   listings          Listing[]
   favorites         Favorite[]
+  requests          Request[]
+  notifications     Notification[]
   verificationCodes VerificationCode[]
 }
 
@@ -39,13 +41,16 @@ model Listing {
   address     String?
   lat         Float?
   lng         Float?
+  status      String   @default("AVAILABLE")
   isAvailable Boolean  @default(true)
+  expiresAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   userId    String
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   favorites Favorite[]
+  requests  Request[]
 }
 
 model Favorite {
@@ -59,6 +64,37 @@ model Favorite {
   listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@unique([userId, listingId])
+}
+
+model Request {
+  id        String   @id @default(cuid())
+  message   String?
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requesterId String
+  requester   User    @relation(fields: [requesterId], references: [id], onDelete: Cascade)
+  listingId   String
+  listing     Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, listingId])
+  @@index([listingId, status, createdAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  type      String
+  title     String
+  body      String
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
 }
 
 model VerificationCode {
