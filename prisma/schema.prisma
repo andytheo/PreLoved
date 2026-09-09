@@ -8,18 +8,24 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  password  String
-  image     String?
-  bio       String?
-  city      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String   @id @default(cuid())
+  name              String
+  email             String   @unique
+  emailVerifiedAt   DateTime?
+  phone             String   @unique
+  phoneVerifiedAt   DateTime?
+  password          String
+  image             String?
+  bio               String?
+  city              String?
+  twoFactorEnabled  Boolean  @default(false)
+  twoFactorMethod   String?  @default("email")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  listings  Listing[]
-  favorites Favorite[]
+  listings          Listing[]
+  favorites         Favorite[]
+  verificationCodes VerificationCode[]
 }
 
 model Listing {
@@ -53,4 +59,19 @@ model Favorite {
   listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@unique([userId, listingId])
+}
+
+model VerificationCode {
+  id         String    @id @default(cuid())
+  purpose    String
+  channel    String
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, channel, createdAt])
 }
