@@ -28,6 +28,10 @@ model User {
   requests          Request[]
   notifications     Notification[]
   verificationCodes VerificationCode[]
+  reportsMade       Report[] @relation("ReporterReports")
+  reportsReceived   Report[] @relation("ReportedUserReports")
+  blocksInitiated   Block[]  @relation("Blocker")
+  blocksReceived    Block[]  @relation("BlockedUser")
 }
 
 model Listing {
@@ -51,6 +55,7 @@ model Listing {
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   favorites Favorite[]
   requests  Request[]
+  reports   Report[]
 
   @@index([status, isAvailable, createdAt])
   @@index([city, status])
@@ -113,4 +118,44 @@ model VerificationCode {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, purpose, channel, createdAt])
+}
+
+model Report {
+  id             String   @id @default(cuid())
+  reason         String
+  details        String?
+  status         String   @default("OPEN")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  reporterId     String
+  reporter       User     @relation("ReporterReports", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedUserId String?
+  reportedUser   User?    @relation("ReportedUserReports", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  listingId      String?
+  listing        Listing? @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([reportedUserId, createdAt])
+  @@index([listingId, createdAt])
+}
+
+model Block {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  blockerId String
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User     @relation("BlockedUser", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+model RateLimitBucket {
+  key       String   @id
+  count     Int      @default(0)
+  resetAt   DateTime
+  updatedAt DateTime @updatedAt
 }
