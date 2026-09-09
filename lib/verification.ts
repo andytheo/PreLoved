@@ -2,7 +2,7 @@ import { createHmac, randomInt, timingSafeEqual } from 'crypto'
 import { prisma } from './prisma'
 
 export type VerificationChannel = 'email' | 'phone'
-export type VerificationPurpose = 'signup' | '2fa'
+export type VerificationPurpose = 'signup' | '2fa' | 'password_reset'
 
 const CODE_TTL_MINUTES = 10
 const RESEND_COOLDOWN_SECONDS = 60
@@ -103,8 +103,20 @@ export async function sendEmailCode(email: string, code: string, purpose: Verifi
   const from = process.env.VERIFICATION_EMAIL_FROM
   if (!apiKey || !from) throw new Error('Email verification provider is not configured')
 
-  const subject = purpose === '2fa' ? 'Your PreLoved sign-in code' : 'Verify your PreLoved email'
-  const label = purpose === '2fa' ? 'sign-in' : 'email verification'
+  const purposeText = {
+    signup: {
+      subject: 'Verify your PreLoved email',
+      label: 'email verification',
+    },
+    '2fa': {
+      subject: 'Your PreLoved sign-in code',
+      label: 'sign-in',
+    },
+    password_reset: {
+      subject: 'Reset your PreLoved password',
+      label: 'password reset',
+    },
+  }[purpose]
 
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -115,8 +127,8 @@ export async function sendEmailCode(email: string, code: string, purpose: Verifi
     body: JSON.stringify({
       from,
       to: [email],
-      subject,
-      text: `Your PreLoved ${label} code is ${code}. It expires in ${CODE_TTL_MINUTES} minutes. If you did not request this, you can ignore this message.`,
+      subject: purposeText.subject,
+      text: `Your PreLoved ${purposeText.label} code is ${code}. It expires in ${CODE_TTL_MINUTES} minutes. If you did not request this, you can ignore this message.`,
     }),
   })
 
@@ -129,10 +141,11 @@ export async function sendSmsCode(phone: string, code: string, purpose: Verifica
   const from = process.env.TWILIO_PHONE_NUMBER
   if (!accountSid || !authToken || !from) throw new Error('SMS verification provider is not configured')
 
+  const label = purpose === '2fa' ? 'sign-in' : purpose === 'password_reset' ? 'password reset' : 'verification'
   const body = new URLSearchParams({
     From: from,
     To: normalizePhone(phone),
-    Body: `PreLoved ${purpose === '2fa' ? 'sign-in' : 'verification'} code: ${code}. Expires in ${CODE_TTL_MINUTES} minutes.`,
+    Body: `PreLoved ${label} code: ${code}. Expires in ${CODE_TTL_MINUTES} minutes.`,
   })
 
   const response = await fetch(
