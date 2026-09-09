@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { CATEGORIES, CONDITIONS } from '@/lib/categories'
+import { publicCoordinate } from '@/lib/geo'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -41,40 +42,46 @@ export async function GET(_req: Request, { params }: Params) {
     const { address, lat, lng, ...publicListing } = listing
     return NextResponse.json({
       ...publicListing,
-      pickup: canSeePickup ? { address, lat, lng } : null,
+      lat: publicCoordinate(lat),
+      lng: publicCoordinate(lng),
+      pickup: canSeePickup ? { address } : null,
     })
-  } catch {
+  } catch (error) {
+    console.error('Failed to fetch listing', error)
     return NextResponse.json({ error: 'Failed to fetch listing' }, { status: 500 })
   }
 }
 
-const updateSchema = z.object({
-  title: z.string().min(3).max(100).optional(),
-  description: z.string().min(10).max(2000).optional(),
-  category: z.string().refine((value) => categoryIds.includes(value), 'Invalid category').optional(),
-  condition: z.string().refine((value) => conditionIds.includes(value), 'Invalid condition').optional(),
-  city: z.string().min(2).max(100).optional(),
-  address: z.string().max(200).optional().nullable(),
-  images: z.array(z.string()).max(6).optional(),
-  isAvailable: z.boolean().optional(),
-})
+const updateSchema = z
+  .object({
+    title: z.string().min(3).max(100).optional(),
+    description: z.string().min(10).max(2000).optional(),
+    category: z.string().refine((value) => categoryIds.includes(value), 'Invalid category').optional(),
+    condition: z.string().refine((value) => conditionIds.includes(value), 'Invalid condition').optional(),
+    city: z.string().min(2).max(100).optional(),
+    address: z.string().max(200).optional().nullable(),
+    images: z.array(z.string().url()).max(6).optional(),
+    lat: z.number().min(-90).max(90).optional().nullable(),
+    lng: z.number().min(-180).max(180).optional().nullable(),
+    isAvailable: z.boolean().optional(),
+  })
+  .superRefine((value, context) => {
+    if ((value.lat === undefined) !== (value.lng === undefined)) {
+      context.addIssue({ code: 'custom', path: ['lat'], message: 'Latitude and longitude must be updated together' })
+    }
+  })
 
 export async function PUT(req: Request, { params }: Params) {
   const { id } = await params
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const listing = await prisma.listing.findUnique({ where: { id } })
     if (!listing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    if (listing.userId !== session.user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    if (listing.userId !== session.user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-    const body = await req.json()
-    const parsed = updateSchema.safeParse(body)
+    const parsed = updateSchema.safeParse(await req.json())
     if (!parsed.success) {
       return NextResponse.json(
         { error: 'Invalid input', details: parsed.error.flatten().fieldErrors },
@@ -82,8 +89,7 @@ export async function PUT(req: Request, { params }: Params) {
       )
     }
 
-    const { images, isAvailable, ...rest } = parsed.data
-
+    const { images, isAvailable, lat, lng, ...rest } = parsed.data
     const updated = await prisma.listing.update({
       where: { id },
       data: {
@@ -93,6 +99,7 @@ export async function PUT(req: Request, { params }: Params) {
         ...(rest.city !== undefined && { city: rest.city.trim() }),
         ...(rest.address !== undefined && { address: rest.address?.trim() || null }),
         ...(images !== undefined && { images: JSON.stringify(images) }),
+        ...(lat !== undefined && lng !== undefined && { lat, lng }),
         ...(isAvailable !== undefined && {
           isAvailable,
           status: isAvailable ? 'AVAILABLE' : 'GIVEN',
@@ -117,7 +124,8 @@ export async function PUT(req: Request, { params }: Params) {
     })
 
     return NextResponse.json(updated)
-  } catch {
+  } catch (error) {
+    console.error('Failed to update listing', error)
     return NextResponse.json({ error: 'Failed to update listing' }, { status: 500 })
   }
 }
@@ -126,19 +134,16 @@ export async function DELETE(_req: Request, { params }: Params) {
   const { id } = await params
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const listing = await prisma.listing.findUnique({ where: { id } })
     if (!listing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    if (listing.userId !== session.user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    if (listing.userId !== session.user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     await prisma.listing.delete({ where: { id } })
     return NextResponse.json({ success: true })
-  } catch {
+  } catch (error) {
+    console.error('Failed to delete listing', error)
     return NextResponse.json({ error: 'Failed to delete listing' }, { status: 500 })
   }
 }
