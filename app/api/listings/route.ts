@@ -43,10 +43,12 @@ export async function GET(req: Request) {
     const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 60) : 20
     const cursor = searchParams.get('cursor')
 
-    const lat = Number(searchParams.get('lat'))
-    const lng = Number(searchParams.get('lng'))
+    const latParam = searchParams.get('lat')
+    const lngParam = searchParams.get('lng')
+    const lat = latParam == null ? Number.NaN : Number(latParam)
+    const lng = lngParam == null ? Number.NaN : Number(lngParam)
     const radiusKm = clampRadius(Number(searchParams.get('radius') ?? '25'))
-    const hasGeo = isValidCoordinate(lat, lng)
+    const hasGeo = latParam != null && lngParam != null && isValidCoordinate(lat, lng)
     const box = hasGeo ? boundingBox(lat, lng, radiusKm) : null
 
     const listings = await prisma.listing.findMany({
@@ -106,7 +108,7 @@ export async function GET(req: Request) {
       : listings
 
     const hasMore = !hasGeo && filtered.length > limit
-    const page = (hasMore ? filtered.slice(0, limit) : filtered.slice(0, limit)).map((listing) => ({
+    const page = filtered.slice(0, limit).map((listing) => ({
       ...listing,
       lat: publicCoordinate(listing.lat),
       lng: publicCoordinate(listing.lng),
