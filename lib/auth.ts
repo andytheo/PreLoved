@@ -3,6 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { prisma } from './prisma'
 import { consumeVerificationCode } from './verification'
+import { consumeRateLimit } from './rate-limit'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -18,16 +19,17 @@ export const authOptions: NextAuthOptions = {
           return null
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email.toLowerCase().trim() },
-        })
+        const email = credentials.email.toLowerCase().trim()
+        const rateLimit = await consumeRateLimit('credentials_authorize', email, 10, 15 * 60 * 1000)
+        if (!rateLimit.allowed) return null
 
+        const user = await prisma.user.findUnique({ where: { email } })
         if (!user) return null
 
         const passwordMatch = await bcrypt.compare(credentials.password, user.password)
         if (!passwordMatch) return null
 
-        // Existing accounts must complete both contact-verification steps before a session is issued.
+        // A session is never issued until both contact methods are verified.
         if (!user.emailVerifiedAt || !user.phoneVerifiedAt) return null
 
         if (user.twoFactorEnabled) {
@@ -53,15 +55,11 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id
-      }
+      if (user) token.id = user.id
       return token
     },
     async session({ session, token }) {
-      if (token && session.user) {
-        session.user.id = token.id as string
-      }
+      if (token && session.user) session.user.id = token.id as string
       return session
     },
   },
