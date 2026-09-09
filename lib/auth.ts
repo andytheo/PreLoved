@@ -2,6 +2,7 @@ import { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { prisma } from './prisma'
+import { consumeVerificationCode } from './verification'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -10,6 +11,7 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
+        otp: { label: 'Verification code', type: 'text' },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
@@ -25,6 +27,17 @@ export const authOptions: NextAuthOptions = {
         const passwordMatch = await bcrypt.compare(credentials.password, user.password)
         if (!passwordMatch) return null
 
+        // Existing accounts must complete both contact-verification steps before a session is issued.
+        if (!user.emailVerifiedAt || !user.phoneVerifiedAt) return null
+
+        if (user.twoFactorEnabled) {
+          const channel = user.twoFactorMethod === 'phone' ? 'phone' : 'email'
+          if (!credentials.otp) return null
+
+          const validOtp = await consumeVerificationCode(user.id, '2fa', channel, credentials.otp)
+          if (!validOtp) return null
+        }
+
         return {
           id: user.id,
           email: user.email,
@@ -36,7 +49,7 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 30 * 24 * 60 * 60,
   },
   callbacks: {
     async jwt({ token, user }) {
