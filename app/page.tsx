@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import ListingCard from '@/components/listings/ListingCard'
 import { ListingWithUser } from '@/types'
@@ -8,13 +9,17 @@ import { ArrowRight, PackageOpen } from 'lucide-react'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 
+function activeListingWhere(): Prisma.ListingWhereInput {
+  return {
+    isAvailable: true,
+    status: 'AVAILABLE',
+    OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+  }
+}
+
 async function getRecentListings(): Promise<ListingWithUser[]> {
   const listings = await prisma.listing.findMany({
-    where: {
-      isAvailable: true,
-      status: 'AVAILABLE',
-      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-    },
+    where: activeListingWhere(),
     include: {
       user: { select: { id: true, name: true, image: true, city: true } },
       _count: { select: { favorites: true } },
@@ -26,14 +31,8 @@ async function getRecentListings(): Promise<ListingWithUser[]> {
 }
 
 async function getStats() {
-  const activeWhere = {
-    isAvailable: true,
-    status: 'AVAILABLE',
-    OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-  } as const
-
   const [listingCount, userCount] = await Promise.all([
-    prisma.listing.count({ where: activeWhere }),
+    prisma.listing.count({ where: activeListingWhere() }),
     prisma.user.count(),
   ])
   return { listingCount, userCount }
