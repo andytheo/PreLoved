@@ -9,6 +9,7 @@ import {
   sendEmailCode,
   sendSmsCode,
 } from '@/lib/verification'
+import { consumeRateLimit, requestIdentity } from '@/lib/rate-limit'
 
 const registerSchema = z.object({
   name: z.string().min(2).max(50),
@@ -37,6 +38,19 @@ export async function POST(req: Request) {
     const { name, email, phone, password, city } = parsed.data
     const normalizedEmail = email.toLowerCase().trim()
     const normalizedPhone = normalizePhone(phone)
+
+    const rateLimit = await consumeRateLimit(
+      'register',
+      requestIdentity(req, `${normalizedEmail}|${normalizedPhone}`),
+      5,
+      15 * 60 * 1000
+    )
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many registration attempts. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfter) } }
+      )
+    }
 
     const existing = await prisma.user.findFirst({
       where: {
