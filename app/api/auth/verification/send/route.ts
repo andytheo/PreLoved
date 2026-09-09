@@ -7,6 +7,7 @@ import {
   sendSmsCode,
   type VerificationChannel,
 } from '@/lib/verification'
+import { consumeRateLimit, requestIdentity } from '@/lib/rate-limit'
 
 const schema = z.object({
   userId: z.string().min(1),
@@ -21,6 +22,19 @@ export async function POST(req: Request) {
     }
 
     const { userId, channel } = parsed.data
+    const rateLimit = await consumeRateLimit(
+      'verification_resend',
+      requestIdentity(req, `${userId}|${channel}`),
+      6,
+      30 * 60 * 1000
+    )
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many verification-code requests. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfter) } }
+      )
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, email: true, phone: true, emailVerifiedAt: true, phoneVerifiedAt: true },
