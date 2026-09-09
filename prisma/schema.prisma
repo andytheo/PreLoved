@@ -3,23 +3,35 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  password  String
-  image     String?
-  bio       String?
-  city      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String   @id @default(cuid())
+  name              String
+  email             String   @unique
+  emailVerifiedAt   DateTime?
+  phone             String?  @unique
+  phoneVerifiedAt   DateTime?
+  password          String
+  image             String?
+  bio               String?
+  city              String?
+  twoFactorEnabled  Boolean  @default(false)
+  twoFactorMethod   String?  @default("email")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  listings  Listing[]
-  favorites Favorite[]
+  listings          Listing[]
+  favorites         Favorite[]
+  requests          Request[]
+  notifications     Notification[]
+  verificationCodes VerificationCode[]
+  reportsMade       Report[] @relation("ReporterReports")
+  reportsReceived   Report[] @relation("ReportedUserReports")
+  blocksInitiated   Block[]  @relation("Blocker")
+  blocksReceived    Block[]  @relation("BlockedUser")
 }
 
 model Listing {
@@ -33,13 +45,20 @@ model Listing {
   address     String?
   lat         Float?
   lng         Float?
+  status      String   @default("AVAILABLE")
   isAvailable Boolean  @default(true)
+  expiresAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   userId    String
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   favorites Favorite[]
+  requests  Request[]
+  reports   Report[]
+
+  @@index([status, isAvailable, createdAt])
+  @@index([city, status])
 }
 
 model Favorite {
@@ -53,4 +72,90 @@ model Favorite {
   listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@unique([userId, listingId])
+}
+
+model Request {
+  id        String   @id @default(cuid())
+  message   String?
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requesterId String
+  requester   User    @relation(fields: [requesterId], references: [id], onDelete: Cascade)
+  listingId   String
+  listing     Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, listingId])
+  @@index([listingId, status, createdAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  type      String
+  title     String
+  body      String
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+}
+
+model VerificationCode {
+  id         String    @id @default(cuid())
+  purpose    String
+  channel    String
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, channel, createdAt])
+}
+
+model Report {
+  id             String   @id @default(cuid())
+  reason         String
+  details        String?
+  status         String   @default("OPEN")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  reporterId     String
+  reporter       User     @relation("ReporterReports", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedUserId String?
+  reportedUser   User?    @relation("ReportedUserReports", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  listingId      String?
+  listing        Listing? @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([reportedUserId, createdAt])
+  @@index([listingId, createdAt])
+}
+
+model Block {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  blockerId String
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User     @relation("BlockedUser", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+model RateLimitBucket {
+  key       String   @id
+  count     Int      @default(0)
+  resetAt   DateTime
+  updatedAt DateTime @updatedAt
 }
