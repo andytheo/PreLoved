@@ -44,15 +44,32 @@ export async function POST(req: Request) {
 
     const listing = await prisma.listing.findUnique({
       where: { id: parsed.data.listingId },
-      select: { id: true, title: true, userId: true, status: true, isAvailable: true },
+      select: { id: true, title: true, userId: true, status: true, isAvailable: true, expiresAt: true },
     })
 
     if (!listing) return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     if (listing.userId === session.user.id) {
       return NextResponse.json({ error: 'You cannot request your own item' }, { status: 400 })
     }
-    if (!listing.isAvailable || listing.status !== 'AVAILABLE') {
+    if (
+      !listing.isAvailable ||
+      listing.status !== 'AVAILABLE' ||
+      (listing.expiresAt && listing.expiresAt <= new Date())
+    ) {
       return NextResponse.json({ error: 'This item is no longer accepting requests' }, { status: 409 })
+    }
+
+    const blocked = await prisma.block.findFirst({
+      where: {
+        OR: [
+          { blockerId: session.user.id, blockedId: listing.userId },
+          { blockerId: listing.userId, blockedId: session.user.id },
+        ],
+      },
+      select: { id: true },
+    })
+    if (blocked) {
+      return NextResponse.json({ error: 'You cannot request items from this member' }, { status: 403 })
     }
 
     const existing = await prisma.request.findUnique({
@@ -62,7 +79,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'You already requested this item', request: existing }, { status: 409 })
     }
 
-    const request = existing
+    const itemRequest = existing
       ? await prisma.request.update({
           where: { id: existing.id },
           data: { status: 'PENDING', message: parsed.data.message || null },
@@ -85,7 +102,7 @@ export async function POST(req: Request) {
       },
     })
 
-    return NextResponse.json(request, { status: 201 })
+    return NextResponse.json(itemRequest, { status: 201 })
   } catch {
     return NextResponse.json({ error: 'Unable to request this item' }, { status: 500 })
   }
