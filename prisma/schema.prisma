@@ -12,7 +12,7 @@ model User {
   name              String
   email             String   @unique
   emailVerifiedAt   DateTime?
-  phone             String   @unique
+  phone             String?  @unique
   phoneVerifiedAt   DateTime?
   password          String
   image             String?
