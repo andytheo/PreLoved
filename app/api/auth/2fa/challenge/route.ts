@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { createVerificationCode, sendEmailCode, sendSmsCode } from '@/lib/verification'
+import { consumeRateLimit, requestIdentity } from '@/lib/rate-limit'
 
 const schema = z.object({
   email: z.string().email(),
@@ -15,6 +16,19 @@ export async function POST(req: Request) {
     if (!parsed.success) return NextResponse.json({ error: 'Invalid credentials' }, { status: 400 })
 
     const email = parsed.data.email.toLowerCase().trim()
+    const rateLimit = await consumeRateLimit(
+      'login',
+      requestIdentity(req, email),
+      8,
+      15 * 60 * 1000
+    )
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many sign-in attempts. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfter) } }
+      )
+    }
+
     const user = await prisma.user.findUnique({ where: { email } })
     if (!user || !(await bcrypt.compare(parsed.data.password, user.password))) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
