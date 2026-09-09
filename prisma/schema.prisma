@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -51,6 +51,9 @@ model Listing {
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   favorites Favorite[]
   requests  Request[]
+
+  @@index([status, isAvailable, createdAt])
+  @@index([city, status])
 }
 
 model Favorite {
