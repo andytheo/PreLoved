@@ -44,6 +44,7 @@ export default async function AdminDashboardPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <PanelLink href="/admin/users" label="Manage users" />
             <PanelLink href="/admin/listings" label="Review listings" />
+            <PanelLink href="/admin/reports" label="Review reports" />
             <PanelLink href="/" label="View marketplace" />
           </div>
         </div>
