@@ -36,7 +36,6 @@ export default async function ListingDetailPage({ params }: Props) {
         select: {
           id: true,
           name: true,
-          email: true,
           image: true,
           city: true,
           bio: true,

@@ -12,6 +12,7 @@ import { signIn } from 'next-auth/react'
 const registerSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(50),
   email: z.string().email('Please enter a valid email'),
+  phone: z.union([z.string().trim().min(8).max(20), z.literal('')]).optional(),
   password: z
     .string()
     .min(8, 'Password must be at least 8 characters')
@@ -38,10 +39,15 @@ export default function RegisterPage() {
   const onSubmit = async (data: RegisterForm) => {
     setError('')
     try {
+      const normalizedData = {
+        ...data,
+        phone: data.phone?.trim() || undefined,
+      }
+
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify(normalizedData),
       })
 
       const json = await res.json()
@@ -59,7 +65,7 @@ export default function RegisterPage() {
       })
 
       if (result?.ok) {
-        router.push('/')
+        router.push(json.verificationEmailSent ? '/verify-email' : '/verify-email?delivery=failed')
         router.refresh()
       } else {
         router.push('/login')
@@ -113,6 +119,17 @@ export default function RegisterPage() {
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
               />
               {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email.message}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone (optional)</label>
+              <input
+                {...register('phone')}
+                type="tel"
+                placeholder="(555) 555-1234"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+              />
+              {errors.phone && <p className="mt-1 text-xs text-red-600">{errors.phone.message}</p>}
             </div>
 
             <div>
@@ -170,7 +187,14 @@ export default function RegisterPage() {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-4">
-          By joining, you agree to our Terms of Service and Privacy Policy
+          By joining, you agree to our{' '}
+          <Link href="/terms" className="text-teal-600 hover:underline font-medium">
+            Terms of Service
+          </Link>
+          {' '}and{' '}
+          <Link href="/privacy" className="text-teal-600 hover:underline font-medium">
+            Privacy Policy
+          </Link>
         </p>
       </div>
     </div>

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useSession, signOut } from 'next-auth/react'
 import { useState } from 'react'
-import { Search, MapPin, Menu, X, Heart, Plus, User, LogOut } from 'lucide-react'
+import { Search, MapPin, Menu, X, Heart, Plus, User, LogOut, MessageCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 const NAV_LINKS = [
@@ -130,6 +130,14 @@ export default function Navbar() {
                       >
                         <User className="w-3.5 h-3.5" />
                         My Profile
+                      </Link>
+                      <Link
+                        href="/messages"
+                        className="flex items-center gap-2.5 px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-gray-700 hover:bg-gray-50 border-b border-gray-100"
+                        onClick={() => setUserMenuOpen(false)}
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        Messages
                       </Link>
                       <Link
                         href="/listings/new"

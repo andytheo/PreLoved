@@ -1,19 +1,18 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { writeFile, mkdir } from 'fs/promises'
-import { join, extname } from 'path'
-import { existsSync } from 'fs'
-import { randomUUID } from 'crypto'
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']
-const MAX_SIZE = 5 * 1024 * 1024 // 5MB
+const MAX_SIZE = 2 * 1024 * 1024 // 2MB
 
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (!session.user.emailVerified) {
+      return NextResponse.json({ error: 'Verify your email before uploading images' }, { status: 403 })
     }
 
     const formData = await req.formData()
@@ -43,24 +42,13 @@ export async function POST(req: Request) {
       }
     }
 
-    // Ensure upload directory exists
-    const uploadDir = join(process.cwd(), 'public', 'uploads')
-    if (!existsSync(uploadDir)) {
-      await mkdir(uploadDir, { recursive: true })
-    }
-
     const urls: string[] = []
 
     for (const file of files) {
-      const ext = extname(file.name).toLowerCase() || '.jpg'
-      const filename = `${randomUUID()}${ext}`
-      const filepath = join(uploadDir, filename)
-
       const bytes = await file.arrayBuffer()
       const buffer = Buffer.from(bytes)
-      await writeFile(filepath, buffer)
-
-      urls.push(`/uploads/${filename}`)
+      const dataUrl = `data:${file.type};base64,${buffer.toString('base64')}`
+      urls.push(dataUrl)
     }
 
     return NextResponse.json({ urls }, { status: 201 })

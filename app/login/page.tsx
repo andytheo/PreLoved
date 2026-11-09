@@ -31,6 +31,7 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginForm) => {
     setError('')
+
     const result = await signIn('credentials', {
       email: data.email,
       password: data.password,
@@ -133,7 +134,7 @@ export default function LoginPage() {
               className="w-full bg-black hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3.5 text-[11px] font-bold uppercase tracking-[0.15em] transition-colors flex items-center justify-center gap-2 mt-2"
             >
               {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              {isSubmitting ? 'Signing in...' : 'Sign In'}
+              {isSubmitting ? 'Signing in...' : 'Continue'}
             </button>
           </form>
 

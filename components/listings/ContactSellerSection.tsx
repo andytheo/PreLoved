@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { MessageCircle, Mail, Heart, Loader2 } from 'lucide-react'
+import { MessageCircle, Heart, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { Session } from 'next-auth'
 import { useRouter } from 'next/navigation'
@@ -17,7 +17,6 @@ interface ContactSellerSectionProps {
     user: {
       id: string
       name: string
-      email: string
     }
   }
   session: Session | null
@@ -28,28 +27,66 @@ export default function ContactSellerSection({ listing, session }: ContactSeller
   const [favorited, setFavorited] = useState(listing.isFavorited ?? false)
   const [favCount, setFavCount] = useState(listing._count?.favorites ?? 0)
   const [loading, setLoading] = useState(false)
+  const [messaging, setMessaging] = useState(false)
+  const [error, setError] = useState('')
   const isOwner = session?.user?.id === listing.userId
+
+  const handleMessage = async () => {
+    if (!session) {
+      router.push('/login')
+      return
+    }
+    if (!session.user.emailVerified) {
+      router.push('/verify-email')
+      return
+    }
+
+    setMessaging(true)
+    setError('')
+    try {
+      const response = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listingId: listing.id }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok || !data?.id) {
+        throw new Error(data?.error || 'Could not start a conversation')
+      }
+      router.push(`/messages/${data.id}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not start a conversation')
+      setMessaging(false)
+    }
+  }
 
   const handleFavorite = async () => {
     if (!session) {
       router.push('/login')
       return
     }
+    if (!session.user.emailVerified) {
+      router.push('/verify-email')
+      return
+    }
 
     setLoading(true)
+    setError('')
     const newFav = !favorited
     setFavorited(newFav)
     setFavCount((prev) => (newFav ? prev + 1 : prev - 1))
 
     try {
-      await fetch('/api/favorites', {
+      const response = await fetch('/api/favorites', {
         method: newFav ? 'POST' : 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ listingId: listing.id }),
       })
+      if (!response.ok) throw new Error('Failed to update saved item')
     } catch {
       setFavorited(!newFav)
       setFavCount((prev) => (newFav ? prev - 1 : prev + 1))
+      setError('Could not update your saved items. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -73,21 +110,22 @@ export default function ContactSellerSection({ listing, session }: ContactSeller
 
   return (
     <div className="space-y-3">
-      {session ? (
-        <a
-          href={`mailto:${listing.user.email}?subject=Interested in: ${encodeURIComponent(listing.title)}&body=Hi ${encodeURIComponent(listing.user.name)},%0A%0AI saw your listing for "${encodeURIComponent(listing.title)}" on PreLoved and I'm interested in picking it up. Is it still available?%0A%0AThanks!`}
-          className="w-full flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 text-white py-3 rounded-xl font-semibold text-sm transition-colors"
+      {session?.user.emailVerified ? (
+        <button
+          onClick={handleMessage}
+          disabled={messaging}
+          className="w-full flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white py-3 rounded-xl font-semibold text-sm transition-colors"
         >
-          <Mail className="w-4 h-4" />
-          Contact Seller
-        </a>
+          {messaging ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
+          Message Seller
+        </button>
       ) : (
         <Link
-          href="/login"
+          href={session ? '/verify-email' : '/login'}
           className="w-full flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 text-white py-3 rounded-xl font-semibold text-sm transition-colors"
         >
           <MessageCircle className="w-4 h-4" />
-          Sign in to Contact
+          {session ? 'Verify email to contact' : 'Sign in to Contact'}
         </Link>
       )}
 
@@ -107,6 +145,7 @@ export default function ContactSellerSection({ listing, session }: ContactSeller
         )}
         {favorited ? `Saved (${favCount})` : `Save Item (${favCount})`}
       </button>
+      {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
     </div>
   )
 }

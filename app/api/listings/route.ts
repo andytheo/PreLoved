@@ -57,6 +57,9 @@ export async function POST(req: Request) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    if (!session.user.emailVerified) {
+      return NextResponse.json({ error: 'Verify your email before posting items' }, { status: 403 })
+    }
 
     const body = await req.json()
     const parsed = createListingSchema.safeParse(body)

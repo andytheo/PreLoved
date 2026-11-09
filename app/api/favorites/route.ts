@@ -14,6 +14,9 @@ export async function POST(req: Request) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    if (!session.user.emailVerified) {
+      return NextResponse.json({ error: 'Verify your email before saving items' }, { status: 403 })
+    }
 
     const body = await req.json()
     const parsed = favoriteSchema.safeParse(body)
@@ -40,6 +43,9 @@ export async function DELETE(req: Request) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (!session.user.emailVerified) {
+      return NextResponse.json({ error: 'Verify your email before changing saved items' }, { status: 403 })
     }
 
     const body = await req.json()

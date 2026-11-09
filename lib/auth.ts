@@ -10,6 +10,7 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
+        isAdmin: { label: 'Admin login', type: 'text' },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
@@ -25,11 +26,17 @@ export const authOptions: NextAuthOptions = {
         const passwordMatch = await bcrypt.compare(credentials.password, user.password)
         if (!passwordMatch) return null
 
+        const requestedAdmin = credentials.isAdmin === 'true'
+        if (requestedAdmin && user.role !== 'ADMIN') {
+          return null
+        }
+
         return {
           id: user.id,
           email: user.email,
           name: user.name,
           image: user.image,
+          role: user.role,
         }
       },
     }),
@@ -42,12 +49,29 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id
+        const userRole = 'role' in user && typeof user.role === 'string' ? user.role : undefined
+        if (userRole) {
+          token.role = userRole
+        }
       }
+
+      if (token.id) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { emailVerified: true, role: true },
+        })
+
+        token.emailVerified = dbUser?.emailVerified === true
+        token.role = dbUser?.role ?? 'USER'
+      }
+
       return token
     },
     async session({ session, token }) {
       if (token && session.user) {
         session.user.id = token.id as string
+        session.user.emailVerified = token.emailVerified === true
+        session.user.role = (token.role as string | undefined) ?? 'USER'
       }
       return session
     },

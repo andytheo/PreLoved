@@ -12,24 +12,34 @@ import { authOptions } from '@/lib/auth'
 import { CATEGORIES } from '@/lib/categories'
 
 async function getRecentListings(): Promise<ListingWithUser[]> {
-  const listings = await prisma.listing.findMany({
-    where: { isAvailable: true },
-    include: {
-      user: { select: { id: true, name: true, image: true, city: true } },
-      _count: { select: { favorites: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 8,
-  })
-  return listings as ListingWithUser[]
+  try {
+    const listings = await prisma.listing.findMany({
+      where: { isAvailable: true },
+      include: {
+        user: { select: { id: true, name: true, image: true, city: true } },
+        _count: { select: { favorites: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 8,
+    })
+    return listings as ListingWithUser[]
+  } catch (error) {
+    console.error('Failed to load recent listings:', error)
+    return []
+  }
 }
 
 async function getStats() {
-  const [listingCount, userCount] = await Promise.all([
-    prisma.listing.count({ where: { isAvailable: true } }),
-    prisma.user.count(),
-  ])
-  return { listingCount, userCount }
+  try {
+    const [listingCount, userCount] = await Promise.all([
+      prisma.listing.count({ where: { isAvailable: true } }),
+      prisma.user.count(),
+    ])
+    return { listingCount, userCount }
+  } catch (error) {
+    console.error('Failed to load homepage stats:', error)
+    return { listingCount: 0, userCount: 0 }
+  }
 }
 
 const CATEGORY_TILES = [

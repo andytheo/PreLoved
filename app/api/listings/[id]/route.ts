@@ -43,6 +43,9 @@ export async function PUT(req: Request, { params }: Params) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    if (!session.user.emailVerified) {
+      return NextResponse.json({ error: 'Verify your email before changing listings' }, { status: 403 })
+    }
 
     const listing = await prisma.listing.findUnique({ where: { id } })
     if (!listing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -78,6 +81,9 @@ export async function DELETE(_req: Request, { params }: Params) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (!session.user.emailVerified) {
+      return NextResponse.json({ error: 'Verify your email before changing listings' }, { status: 403 })
     }
 
     const listing = await prisma.listing.findUnique({ where: { id } })

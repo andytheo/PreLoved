@@ -36,3 +36,17 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 
 # PreLoved
+
+## Email verification
+
+Registration is open. Users must verify their email before posting, changing listings, saving items, uploading images, or contacting a seller.
+
+Configure `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, `SENDGRID_API_KEY`, and `EMAIL_FROM` for the deployment. Do not run the demo seed against a database containing real data: it deletes listings and favorites. Admin accounts must be provisioned securely and have a verified email.
+
+If verification email delivery fails after registration, the account still exists. Sign in and use the resend button on `/verify-email`. Existing accounts retain their current verification status; review historical accounts before allowing them into the beta.
+
+## Messaging
+
+Buyers contact sellers through in-app conversations instead of exposing seller email addresses. Starting a conversation from a listing (`POST /api/conversations`) and sending messages (`POST /api/conversations/[id]/messages`) require a verified email. Only the buyer and seller can read or post in a conversation. Messages are 1 to 2000 characters. Conversations are limited to one per listing per buyer, and they can't be started on unavailable or your own listings.
+
+Users can send at most 30 messages per minute. Registration is limited to 10 attempts per IP address per hour. These limits are kept in memory per server instance, so use a shared store (for example Redis) before running multiple instances.

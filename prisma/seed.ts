@@ -44,6 +44,22 @@ async function main() {
     },
   })
 
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@preloved.local'
+  const adminPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'AdminPassword1!', 12)
+
+  await prisma.user.upsert({
+    where: { email: adminEmail },
+    update: { role: 'ADMIN', password: adminPassword },
+    create: {
+      name: 'PreLoved Admin',
+      email: adminEmail,
+      password: adminPassword,
+      city: 'Toronto, ON',
+      role: 'ADMIN',
+      emailVerified: true,
+    },
+  })
+
   // Clear existing listings so re-seeding is idempotent
   await prisma.favorite.deleteMany()
   await prisma.listing.deleteMany()
