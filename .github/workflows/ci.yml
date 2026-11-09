@@ -31,7 +31,7 @@ jobs:
       VERIFICATION_SECRET: ci-verification-secret-not-for-production
       RESEND_API_KEY: re_ci_placeholder
       VERIFICATION_EMAIL_FROM: PreLoved <verify@example.com>
-      TWILIO_ACCOUNT_SID: AC00000000000000000000000000000000
+      TWILIO_ACCOUNT_SID: ci-placeholder
       TWILIO_AUTH_TOKEN: ci-placeholder
       TWILIO_PHONE_NUMBER: +15555550123
       CLOUDINARY_CLOUD_NAME: ci-placeholder
