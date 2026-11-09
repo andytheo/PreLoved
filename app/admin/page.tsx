@@ -14,7 +14,7 @@ export default async function AdminDashboardPage() {
   const [totalUsers, totalListings, verifiedUsers] = await Promise.all([
     prisma.user.count(),
     prisma.listing.count(),
-    prisma.user.count({ where: { emailVerified: true } }),
+    prisma.user.count({ where: { emailVerifiedAt: { not: null }, phoneVerifiedAt: { not: null } } }),
   ])
 
   return (

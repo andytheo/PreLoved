@@ -41,9 +41,9 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 Registration is open. Users must verify their email before posting, changing listings, saving items, uploading images, or contacting a seller.
 
-Configure `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, `SENDGRID_API_KEY`, and `EMAIL_FROM` for the deployment. Do not run the demo seed against a database containing real data: it deletes listings and favorites. Admin accounts must be provisioned securely and have a verified email.
+Configure `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, `RESEND_API_KEY`, `VERIFICATION_EMAIL_FROM`, and `CONTACT_EMAIL_FROM` for the deployment. Do not run the demo seed against a database containing real data: it deletes listings and favorites. Admin accounts must be provisioned securely and have a verified email.
 
-If verification email delivery fails after registration, the account still exists. Sign in and use the resend button on `/verify-email`. Existing accounts retain their current verification status; review historical accounts before allowing them into the beta.
+If verification email delivery fails after registration, the account still exists. Sign in and use the resend option on `/verify`. Existing accounts retain their current verification status; review historical accounts before allowing them into the beta.
 
 ## Messaging
 

@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { checkRateLimit } from '../lib/rate-limit'
 import { isConversationParticipant, messageBodySchema, MESSAGE_MAX_LENGTH } from '../lib/messaging'
 
 test('message body must be trimmed and within the length limit', () => {
@@ -17,15 +16,4 @@ test('only the buyer and seller are conversation participants', () => {
   assert.equal(isConversationParticipant(conversation, 'buyer'), true)
   assert.equal(isConversationParticipant(conversation, 'seller'), true)
   assert.equal(isConversationParticipant(conversation, 'stranger'), false)
-})
-
-test('rate limiter allows up to the limit per key and resets after the window', async () => {
-  const key = `test:${Math.random()}`
-  assert.equal(checkRateLimit(key, 2, 50), true)
-  assert.equal(checkRateLimit(key, 2, 50), true)
-  assert.equal(checkRateLimit(key, 2, 50), false)
-  assert.equal(checkRateLimit(`${key}:other`, 2, 50), true)
-
-  await new Promise((resolve) => setTimeout(resolve, 60))
-  assert.equal(checkRateLimit(key, 2, 50), true)
 })

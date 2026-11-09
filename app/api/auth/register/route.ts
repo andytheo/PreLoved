@@ -2,14 +2,19 @@ import { NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { randomBytes } from 'crypto'
-import { sendVerificationEmail } from '@/lib/email'
-import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
+import {
+  createVerificationCode,
+  isValidE164,
+  normalizePhone,
+  sendEmailCode,
+  sendSmsCode,
+} from '@/lib/verification'
+import { consumeRateLimit, requestIdentity } from '@/lib/rate-limit'
 
 const registerSchema = z.object({
   name: z.string().min(2).max(50),
   email: z.string().email(),
-  phone: z.string().trim().max(30).optional().or(z.literal('')),
+  phone: z.string().refine(isValidE164, 'Phone number must use international format, e.g. +14165551234'),
   password: z
     .string()
     .min(8)
@@ -20,10 +25,6 @@ const registerSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    if (!checkRateLimit(`register:${getClientIp(req)}`, 10, 60 * 60 * 1000)) {
-      return NextResponse.json({ error: 'Too many sign-up attempts. Please try again later.' }, { status: 429 })
-    }
-
     const body = await req.json()
     const parsed = registerSchema.safeParse(body)
 
@@ -34,51 +35,84 @@ export async function POST(req: Request) {
       )
     }
 
-    const { name, email, password, city, phone } = parsed.data
+    const { name, email, phone, password, city } = parsed.data
+    const normalizedEmail = email.toLowerCase().trim()
+    const normalizedPhone = normalizePhone(phone)
 
-    const existing = await prisma.user.findUnique({
-      where: { email: email.toLowerCase().trim() },
+    const rateLimit = await consumeRateLimit(
+      'register',
+      requestIdentity(req, `${normalizedEmail}|${normalizedPhone}`),
+      5,
+      15 * 60 * 1000
+    )
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many registration attempts. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfter) } }
+      )
+    }
+
+    const existing = await prisma.user.findFirst({
+      where: {
+        OR: [{ email: normalizedEmail }, { phone: normalizedPhone }],
+      },
+      select: { email: true, phone: true },
     })
 
     if (existing) {
       return NextResponse.json(
-        { error: 'An account with this email already exists' },
+        {
+          error:
+            existing.email === normalizedEmail
+              ? 'An account with this email already exists'
+              : 'An account with this phone number already exists',
+        },
         { status: 409 }
       )
     }
 
     const hashedPassword = await bcrypt.hash(password, 12)
-    const verificationToken = randomBytes(32).toString('hex')
-    const verificationExpiry = new Date(Date.now() + 1000 * 60 * 60 * 24)
 
     const user = await prisma.user.create({
       data: {
         name: name.trim(),
-        email: email.toLowerCase().trim(),
+        email: normalizedEmail,
+        phone: normalizedPhone,
         password: hashedPassword,
         city: city.trim(),
-        phone: phone?.trim() || null,
-        role: 'USER',
-        emailVerified: false,
-        emailVerificationToken: verificationToken,
-        emailVerificationTokenExpires: verificationExpiry,
       },
     })
 
-    let verificationEmailSent = true
+    let deliveryWarning: string | undefined
     try {
-      await sendVerificationEmail(user.email, verificationToken, user.name)
+      const [emailCode, phoneCode] = await Promise.all([
+        createVerificationCode(user.id, 'signup', 'email'),
+        createVerificationCode(user.id, 'signup', 'phone'),
+      ])
+
+      await Promise.all([
+        sendEmailCode(user.email, emailCode.code, 'signup'),
+        sendSmsCode(user.phone!, phoneCode.code, 'signup'),
+      ])
     } catch (error) {
-      console.error('Registration verification email failed:', error)
-      verificationEmailSent = false
+      console.error('Unable to deliver initial verification codes', error)
+      deliveryWarning =
+        'Your account was created, but verification codes could not be delivered. Use Resend Code after the providers are configured.'
     }
 
     return NextResponse.json(
-      { id: user.id, name: user.name, email: user.email, verificationEmailSent },
+      {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        verificationRequired: true,
+        deliveryWarning,
+      },
       { status: 201 }
     )
   } catch (error) {
-    console.error('Register failed:', error)
-    return NextResponse.json({ error: 'Unable to create account' }, { status: 500 })
+    console.error('Registration failed', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

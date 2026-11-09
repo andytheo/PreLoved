@@ -1,4 +1,2 @@
--- AlterTable
-ALTER TABLE "User" ADD COLUMN     "phone" TEXT,
-ADD COLUMN     "twoFactorEnabled" BOOLEAN NOT NULL DEFAULT false,
-ADD COLUMN     "twoFactorPhoneVerified" BOOLEAN NOT NULL DEFAULT false;
+-- Superseded by 20260909213000_add_verification_and_2fa, which adds these columns.
+-- Kept as an empty step so migration history stays consistent for databases that recorded it.

@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isConversationParticipant, messageBodySchema, MESSAGE_MAX_LENGTH } from '@/lib/messaging'
-import { checkRateLimit } from '@/lib/rate-limit'
+import { consumeRateLimit } from '@/lib/rate-limit'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -23,7 +23,8 @@ export async function POST(req: Request, { params }: RouteContext) {
     }
 
     const userId = session.user.id
-    if (!checkRateLimit(`message:${userId}`, 30, 60 * 1000)) {
+    const rateLimit = await consumeRateLimit('messages', userId, 30, 60 * 1000)
+    if (!rateLimit.allowed) {
       return NextResponse.json({ error: 'You are sending messages too quickly. Please wait a moment.' }, { status: 429 })
     }
 

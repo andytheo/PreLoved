@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { MessageCircle, Heart, Loader2 } from 'lucide-react'
+import { Heart, Loader2, MessageCircle, Send, XCircle } from 'lucide-react'
 import Link from 'next/link'
 import { Session } from 'next-auth'
 import { useRouter } from 'next/navigation'
@@ -12,69 +12,36 @@ interface ContactSellerSectionProps {
     title: string
     userId: string
     isAvailable: boolean
+    status?: string
     isFavorited?: boolean
     _count?: { favorites: number }
-    user: {
-      id: string
-      name: string
-    }
   }
   session: Session | null
+  currentRequest?: { id: string; status: string } | null
 }
 
-export default function ContactSellerSection({ listing, session }: ContactSellerSectionProps) {
+export default function ContactSellerSection({ listing, session, currentRequest }: ContactSellerSectionProps) {
   const router = useRouter()
   const [favorited, setFavorited] = useState(listing.isFavorited ?? false)
   const [favCount, setFavCount] = useState(listing._count?.favorites ?? 0)
   const [loading, setLoading] = useState(false)
-  const [messaging, setMessaging] = useState(false)
+  const [requestBusy, setRequestBusy] = useState(false)
+  const [messageBusy, setMessageBusy] = useState(false)
+  const [requestState, setRequestState] = useState(currentRequest ?? null)
+  const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const isOwner = session?.user?.id === listing.userId
-
-  const handleMessage = async () => {
-    if (!session) {
-      router.push('/login')
-      return
-    }
-    if (!session.user.emailVerified) {
-      router.push('/verify-email')
-      return
-    }
-
-    setMessaging(true)
-    setError('')
-    try {
-      const response = await fetch('/api/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ listingId: listing.id }),
-      })
-      const data = await response.json().catch(() => null)
-      if (!response.ok || !data?.id) {
-        throw new Error(data?.error || 'Could not start a conversation')
-      }
-      router.push(`/messages/${data.id}`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start a conversation')
-      setMessaging(false)
-    }
-  }
 
   const handleFavorite = async () => {
     if (!session) {
       router.push('/login')
       return
     }
-    if (!session.user.emailVerified) {
-      router.push('/verify-email')
-      return
-    }
 
     setLoading(true)
-    setError('')
     const newFav = !favorited
     setFavorited(newFav)
-    setFavCount((prev) => (newFav ? prev + 1 : prev - 1))
+    setFavCount((prev) => (newFav ? prev + 1 : Math.max(prev - 1, 0)))
 
     try {
       const response = await fetch('/api/favorites', {
@@ -82,51 +49,178 @@ export default function ContactSellerSection({ listing, session }: ContactSeller
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ listingId: listing.id }),
       })
-      if (!response.ok) throw new Error('Failed to update saved item')
+      if (!response.ok) throw new Error('Unable to update saved item')
     } catch {
       setFavorited(!newFav)
-      setFavCount((prev) => (newFav ? prev - 1 : prev + 1))
-      setError('Could not update your saved items. Please try again.')
+      setFavCount((prev) => (newFav ? Math.max(prev - 1, 0) : prev + 1))
     } finally {
       setLoading(false)
     }
   }
 
+  const requestItem = async () => {
+    if (!session) {
+      router.push('/login')
+      return
+    }
+    setRequestBusy(true)
+    setError('')
+    try {
+      const response = await fetch('/api/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listingId: listing.id, message: message.trim() || undefined }),
+      })
+      const json = await response.json()
+      if (!response.ok) {
+        setError(json.error || 'Unable to request this item')
+        return
+      }
+      setRequestState({ id: json.id, status: json.status })
+      setMessage('')
+      router.refresh()
+    } catch {
+      setError('Unable to request this item. Please try again.')
+    } finally {
+      setRequestBusy(false)
+    }
+  }
+
+  const cancelRequest = async () => {
+    if (!requestState) return
+    setRequestBusy(true)
+    setError('')
+    try {
+      const response = await fetch(`/api/requests/${requestState.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel' }),
+      })
+      const json = await response.json()
+      if (!response.ok) {
+        setError(json.error || 'Unable to cancel request')
+        return
+      }
+      setRequestState({ ...requestState, status: 'CANCELLED' })
+      router.refresh()
+    } catch {
+      setError('Unable to cancel request. Please try again.')
+    } finally {
+      setRequestBusy(false)
+    }
+  }
+
+  const messageSeller = async () => {
+    if (!session) {
+      router.push('/login')
+      return
+    }
+    setMessageBusy(true)
+    setError('')
+    try {
+      const response = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listingId: listing.id }),
+      })
+      const json = await response.json()
+      if (!response.ok) {
+        setError(json.error || 'Unable to start a conversation')
+        return
+      }
+      router.push(`/messages/${json.id}`)
+    } catch {
+      setError('Unable to start a conversation. Please try again.')
+    } finally {
+      setMessageBusy(false)
+    }
+  }
+
   if (isOwner) {
     return (
-      <div className="text-center py-2 text-sm text-gray-500 bg-gray-50 rounded-xl px-4">
-        This is your listing
+      <div className="space-y-3">
+        <div className="text-center py-2 text-sm text-gray-500 bg-gray-50 rounded-xl px-4">
+          This is your listing
+        </div>
+        <Link
+          href={`/listings/${listing.id}/requests`}
+          className="w-full flex items-center justify-center gap-2 bg-black hover:bg-gray-800 text-white py-3 rounded-xl font-semibold text-sm transition-colors"
+        >
+          Review Requests
+        </Link>
       </div>
     )
   }
 
-  if (!listing.isAvailable) {
-    return (
-      <div className="text-center py-3 text-sm text-gray-500 bg-gray-50 rounded-xl">
-        This item is no longer available
-      </div>
-    )
-  }
+  const status = requestState?.status
+  const canRequest = listing.isAvailable && (!listing.status || listing.status === 'AVAILABLE')
 
   return (
     <div className="space-y-3">
-      {session?.user.emailVerified ? (
-        <button
-          onClick={handleMessage}
-          disabled={messaging}
-          className="w-full flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white py-3 rounded-xl font-semibold text-sm transition-colors"
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 text-xs">{error}</div>}
+
+      {!session ? (
+        <Link
+          href="/login"
+          className="w-full flex items-center justify-center gap-2 bg-[#0BA8A4] hover:bg-teal-700 text-white py-3 rounded-xl font-semibold text-sm transition-colors"
         >
-          {messaging ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
+          Sign in to Request Item
+        </Link>
+      ) : status === 'PENDING' ? (
+        <div className="space-y-2">
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 px-3 py-3 text-sm text-center font-medium">
+            Request pending
+          </div>
+          <button onClick={cancelRequest} disabled={requestBusy} className="w-full flex items-center justify-center gap-2 border border-gray-300 py-3 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50">
+            <XCircle className="w-4 h-4" /> Cancel Request
+          </button>
+        </div>
+      ) : status === 'ACCEPTED' ? (
+        <div className="space-y-2">
+          <div className="bg-green-50 border border-green-200 text-green-800 px-3 py-3 text-sm text-center font-medium">
+            Your request was accepted. Pickup details are shown on this page.
+          </div>
+          <button onClick={cancelRequest} disabled={requestBusy} className="w-full flex items-center justify-center gap-2 border border-gray-300 py-3 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50">
+            <XCircle className="w-4 h-4" /> Cancel Request
+          </button>
+        </div>
+      ) : status === 'DECLINED' ? (
+        <div className="bg-gray-50 border border-gray-200 text-gray-600 px-3 py-3 text-sm text-center">
+          This request was not selected.
+        </div>
+      ) : status === 'COMPLETED' ? (
+        <div className="bg-gray-50 border border-gray-200 text-gray-600 px-3 py-3 text-sm text-center">
+          Handoff completed.
+        </div>
+      ) : canRequest ? (
+        <div className="space-y-2">
+          <textarea
+            value={message}
+            onChange={(event) => setMessage(event.target.value.slice(0, 500))}
+            rows={3}
+            placeholder="Optional note to the giver (pickup availability, why you need it, etc.)"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#0BA8A4] resize-none"
+          />
+          <button onClick={requestItem} disabled={requestBusy} className="w-full flex items-center justify-center gap-2 bg-[#0BA8A4] hover:bg-teal-700 disabled:opacity-50 text-white py-3 rounded-xl font-semibold text-sm transition-colors">
+            {requestBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            Request Item
+          </button>
+        </div>
+      ) : (
+        <div className="text-center py-3 text-sm text-gray-500 bg-gray-50 rounded-xl">
+          This item is not accepting requests
+        </div>
+      )}
+
+      {session && (
+        <button
+          onClick={messageSeller}
+          disabled={messageBusy}
+          className="w-full flex items-center justify-center gap-2 border border-gray-300 py-3 rounded-xl text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
+        >
+          {messageBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
           Message Seller
         </button>
-      ) : (
-        <Link
-          href={session ? '/verify-email' : '/login'}
-          className="w-full flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 text-white py-3 rounded-xl font-semibold text-sm transition-colors"
-        >
-          <MessageCircle className="w-4 h-4" />
-          {session ? 'Verify email to contact' : 'Sign in to Contact'}
-        </Link>
       )}
 
       <button
@@ -145,7 +239,6 @@ export default function ContactSellerSection({ listing, session }: ContactSeller
         )}
         {favorited ? `Saved (${favCount})` : `Save Item (${favCount})`}
       </button>
-      {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
     </div>
   )
 }

@@ -2,6 +2,8 @@ import { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { prisma } from './prisma'
+import { consumeVerificationCode } from './verification'
+import { consumeRateLimit } from './rate-limit'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -10,6 +12,7 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
+        otp: { label: 'Verification code', type: 'text' },
         isAdmin: { label: 'Admin login', type: 'text' },
       },
       async authorize(credentials) {
@@ -17,19 +20,29 @@ export const authOptions: NextAuthOptions = {
           return null
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email.toLowerCase().trim() },
-        })
+        const email = credentials.email.toLowerCase().trim()
+        const rateLimit = await consumeRateLimit('credentials_authorize', email, 10, 15 * 60 * 1000)
+        if (!rateLimit.allowed) return null
 
+        const user = await prisma.user.findUnique({ where: { email } })
         if (!user) return null
 
         const passwordMatch = await bcrypt.compare(credentials.password, user.password)
         if (!passwordMatch) return null
 
-        const requestedAdmin = credentials.isAdmin === 'true'
-        if (requestedAdmin && user.role !== 'ADMIN') {
-          return null
+        // A session is never issued until both contact methods are verified.
+        if (!user.emailVerifiedAt || !user.phoneVerifiedAt) return null
+
+        if (user.twoFactorEnabled) {
+          const channel = user.twoFactorMethod === 'phone' ? 'phone' : 'email'
+          if (!credentials.otp) return null
+
+          const validOtp = await consumeVerificationCode(user.id, '2fa', channel, credentials.otp)
+          if (!validOtp) return null
         }
+
+        const requestedAdmin = credentials.isAdmin === 'true'
+        if (requestedAdmin && user.role !== 'ADMIN') return null
 
         return {
           id: user.id,
@@ -43,25 +56,19 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 30 * 24 * 60 * 60,
   },
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id
-        const userRole = 'role' in user && typeof user.role === 'string' ? user.role : undefined
-        if (userRole) {
-          token.role = userRole
-        }
-      }
+      if (user) token.id = user.id
 
       if (token.id) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id as string },
-          select: { emailVerified: true, role: true },
+          select: { emailVerifiedAt: true, phoneVerifiedAt: true, role: true },
         })
 
-        token.emailVerified = dbUser?.emailVerified === true
+        token.emailVerified = Boolean(dbUser?.emailVerifiedAt && dbUser?.phoneVerifiedAt)
         token.role = dbUser?.role ?? 'USER'
       }
 

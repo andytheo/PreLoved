@@ -56,7 +56,8 @@ async function main() {
       password: adminPassword,
       city: 'Toronto, ON',
       role: 'ADMIN',
-      emailVerified: true,
+      emailVerifiedAt: new Date(),
+      phoneVerifiedAt: new Date(),
     },
   })
 

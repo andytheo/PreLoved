@@ -20,7 +20,8 @@ export default async function AdminUsersPage() {
       name: true,
       email: true,
       role: true,
-      emailVerified: true,
+      emailVerifiedAt: true,
+      phoneVerifiedAt: true,
       createdAt: true,
       _count: { select: { listings: true } },
     },
@@ -51,7 +52,7 @@ export default async function AdminUsersPage() {
                   <td className="px-4 py-3">{user.name}</td>
                   <td className="px-4 py-3 text-slate-300">{user.email}</td>
                   <td className="px-4 py-3">{user.role}</td>
-                  <td className="px-4 py-3">{user.emailVerified ? 'Yes' : 'No'}</td>
+                  <td className="px-4 py-3">{user.emailVerifiedAt && user.phoneVerifiedAt ? 'Yes' : 'No'}</td>
                   <td className="px-4 py-3">{user._count.listings}</td>
                   <td className="px-4 py-3 text-slate-400">{user.createdAt.toLocaleDateString()}</td>
                 </tr>

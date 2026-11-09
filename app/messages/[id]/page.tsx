@@ -78,7 +78,7 @@ export default async function ConversationPage({ params }: PageProps) {
         <MessageForm conversationId={conversation.id} />
       ) : (
         <p className="text-sm text-gray-700">
-          <Link href="/verify-email" className="underline">Verify your email</Link> to send messages.
+          <Link href="/verify" className="underline">Verify your email</Link> to send messages.
         </p>
       )}
     </main>

@@ -4,7 +4,6 @@ import "./globals.css";
 import Providers from "@/components/providers/SessionProvider";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
-import EmailVerificationBanner from "@/components/layout/EmailVerificationBanner";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
@@ -32,7 +31,6 @@ export default async function RootLayout({
       <body className={`${montserrat.variable} font-sans bg-white text-gray-900 min-h-screen`}>
         <Providers session={session}>
           <Navbar />
-          <EmailVerificationBanner />
           <main>{children}</main>
           <Footer />
         </Providers>

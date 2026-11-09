@@ -4,7 +4,7 @@ import { getToken } from 'next-auth/jwt'
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
-  if (pathname.startsWith('/verify-email') || pathname.startsWith('/api/')) {
+  if (pathname.startsWith('/api/')) {
     return NextResponse.next()
   }
 

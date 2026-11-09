@@ -22,6 +22,10 @@ function mockModule(specifier: string, exports: unknown) {
 }
 
 const restoreNextAuth = mockModule('next-auth', { getServerSession: async () => currentSession })
+const restoreRateLimit = mockModule('../lib/rate-limit', {
+  requestIdentity: () => 'test-identity',
+  consumeRateLimit: async () => ({ allowed: true, retryAfter: 0 }),
+})
 const restorePrisma = mockModule('../lib/prisma', {
   prisma: {
     conversation: { findUnique: async () => conversationLookup },
@@ -67,5 +71,6 @@ test('sending a message returns 404 for non-participants', async () => {
 
 test.after(() => {
   restoreNextAuth()
+  restoreRateLimit()
   restorePrisma()
 })
